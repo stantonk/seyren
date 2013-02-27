@@ -44,11 +44,11 @@ import com.seyren.core.util.config.GraphiteConfig;
 
 @Named
 public class GraphiteTargetChecker implements TargetChecker {
-    
+
     private static final Logger LOGGER = LoggerFactory.getLogger(GraphiteTargetChecker.class);
     private static final String QUERY_STRING = "from=-11minutes&until=-1minutes&uniq=%s&format=json&target=%s";
     private static final int MAX_CONNECTIONS_PER_ROUTE = 20;
-    
+
     private final HttpClient client;
     private final String graphiteScheme;
     private final String graphiteHost;
@@ -82,7 +82,7 @@ public class GraphiteTargetChecker implements TargetChecker {
                 String target = metric.path("target").asText();
                 
                 try {
-                    BigDecimal value = getLatestValue(metric);
+                    BigDecimal value = getAggregateValue(metric);
                     targetValues.put(target, Optional.of(value));
                 } catch (InvalidGraphiteValueException e) {
                     // Silence these - we don't know what's causing Graphite to return null values
@@ -101,22 +101,22 @@ public class GraphiteTargetChecker implements TargetChecker {
     }
     
     /**
-     * Loop through the datapoints in reverse order until we find the latest non-null value
+     * Loop through the datapoints in reverse order and aggregate all non-null values.
      */
-    private BigDecimal getLatestValue(JsonNode node) throws Exception {
+    private BigDecimal getAggregateValue(JsonNode node) throws Exception {
         JsonNode datapoints = node.get("datapoints");
+        BigDecimal aggregate = BigDecimal.ZERO;
         
         for (int i = datapoints.size() - 1; i >= 0; i--) {
             String value = datapoints.get(i).get(0).asText();
             if (!value.equals("null")) {
-                return new BigDecimal(value);
+                aggregate = aggregate.add(new BigDecimal(value));
             }
         }
-        
-        LOGGER.warn("{}", node);
-        throw new InvalidGraphiteValueException("Could not find a valid datapoint for target: " + node.get("target"));
+
+        return aggregate;
     }
-    
+
     private ClientConnectionManager createConnectionManager() {
         PoolingClientConnectionManager manager = new PoolingClientConnectionManager();
         manager.setDefaultMaxPerRoute(MAX_CONNECTIONS_PER_ROUTE);

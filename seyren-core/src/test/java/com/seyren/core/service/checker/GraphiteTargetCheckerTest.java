@@ -82,24 +82,6 @@ public class GraphiteTargetCheckerTest {
     }
     
     @Test
-    public void valueIsDeterminedByGoingThroughDatapointsInReverserOrder() throws Exception {
-        String response = "[{\"target\": \"service.error.1MinuteRate\", \"datapoints\": [[0.20, 1337453460],[0.01, 1337453463]]}]";
-        
-        clientDriver.addExpectation(
-                onRequestTo("/render/")
-                        .withParam("from", "-11minutes")
-                        .withParam("until", "-1minutes")
-                        .withParam("uniq", Pattern.compile("[0-9]+"))
-                        .withParam("format", "json")
-                        .withParam("target", "service.error.1MinuteRate"),
-                giveResponse(response, "application/json"));
-        
-        Map<String, Optional<BigDecimal>> values = checker.check(check());
-        
-        assertThat(values.get("service.error.1MinuteRate").get(), is(new BigDecimal("0.01")));
-    }
-    
-    @Test
     public void valueIsDeterminedBySkippingNullValues() throws Exception {
         String response = "[{\"target\": \"service.error.1MinuteRate\", \"datapoints\": [[0.17, 1337453460],[null, 1337453463]]}]";
         
@@ -115,24 +97,6 @@ public class GraphiteTargetCheckerTest {
         Map<String, Optional<BigDecimal>> values = checker.check(check());
         
         assertThat(values.get("service.error.1MinuteRate").get(), is(new BigDecimal("0.17")));
-    }
-    
-    @Test
-    public void targetWhichOnlyHasNullValuesIsAbsent() throws Exception {
-        String response = "[{\"target\": \"service.error.1MinuteRate\", \"datapoints\": [[null, 1337453460],[null, 1337453463]]}]";
-        
-        clientDriver.addExpectation(
-                onRequestTo("/render/")
-                        .withParam("from", "-11minutes")
-                        .withParam("until", "-1minutes")
-                        .withParam("uniq", Pattern.compile("[0-9]+"))
-                        .withParam("format", "json")
-                        .withParam("target", "service.error.1MinuteRate"),
-                giveResponse(response, "application/json"));
-        
-        Map<String, Optional<BigDecimal>> values = checker.check(check());
-        
-        assertThat(values.get("service.error.1MinuteRate").isPresent(), is(false));
     }
     
     @Test
@@ -154,8 +118,31 @@ public class GraphiteTargetCheckerTest {
         Map<String, Optional<BigDecimal>> values = checker.check(checkWithTarget("service.*.1MinuteRate"));
         
         assertThat(values.entrySet(), hasSize(2));
-        assertThat(values.get("service.error.1MinuteRate").get(), is(new BigDecimal("0.01")));
-        assertThat(values.get("service.warn.1MinuteRate").get(), is(new BigDecimal("0.78")));
+        assertThat(values.get("service.error.1MinuteRate").get(), is(new BigDecimal("0.21")));
+        assertThat(values.get("service.warn.1MinuteRate").get(), is(new BigDecimal("1.34")));
+    }
+
+    @Test
+    public void aggregateValueReturnedEvenWithNullsPresent() throws Exception {
+        String response = "[" +
+                "{\"target\": \"service.error.1MinuteRate\", \"datapoints\": [[0.20, 1337453460],[null, 1337453463],[0.01, 1337453466]]}," +
+                "{\"target\": \"service.warn.1MinuteRate\", \"datapoints\": [[0.56, 1337453460],[0.78, 1337453463], [null, 1337453466]]}" +
+                "]";
+
+        clientDriver.addExpectation(
+                onRequestTo("/render/")
+                        .withParam("from", "-11minutes")
+                        .withParam("until", "-1minutes")
+                        .withParam("uniq", Pattern.compile("[0-9]+"))
+                        .withParam("format", "json")
+                        .withParam("target", "service.*.1MinuteRate"),
+                giveResponse(response, "application/json"));
+
+        Map<String, Optional<BigDecimal>> values = checker.check(checkWithTarget("service.*.1MinuteRate"));
+
+        assertThat(values.entrySet(), hasSize(2));
+        assertThat(values.get("service.error.1MinuteRate").get(), is(new BigDecimal("0.21")));
+        assertThat(values.get("service.warn.1MinuteRate").get(), is(new BigDecimal("1.34")));
     }
     
     @Test
